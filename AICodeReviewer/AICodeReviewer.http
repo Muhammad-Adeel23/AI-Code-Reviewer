@@ -1,0 +1,6 @@
+@AICodeReviewer_HostAddress = http://localhost:5021
+
+GET {{AICodeReviewer_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
