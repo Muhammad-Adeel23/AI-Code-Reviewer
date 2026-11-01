@@ -87,15 +87,16 @@ namespace Services.PullRequest
                 ?? throw new KeyNotFoundException("PR nahi mili");
 
             // Already reviewing check
-            if (pr.ReviewStatus == "Analyzing" || pr.ReviewStatus == "Queued")
-                throw new InvalidOperationException(
-                    "Review pehle se chal rahi hai — wait karein");
+            var busy = pr.ReviewStatus is "Analyzing" or "Queued" or "Reviewing";
+            var stale = pr.UpdatedAt < DateTime.UtcNow.AddMinutes(-15);
+            if (busy && !stale)
+                throw new InvalidOperationException("Review pehle se chal rahi hai - wait karein");
 
             // Status update karo
             await _prRepo.UpdateReviewStatusAsync(prId, "Queued");
 
-            var jobId = BackgroundJob.Enqueue<IAiReviewJob>(
-                j => j.ExecuteAsync(prId));
+                          
+            var jobId = BackgroundJob.Enqueue<IAiReviewJob>(j => j.ExecuteAsync(prId, null));
 
             return new ReviewStatusDto
             {
@@ -110,6 +111,11 @@ namespace Services.PullRequest
 
         public async Task<ReviewStatusDto> GetReviewStatusAsync(int userId, int prId)
         {
+            var org = await _teamRepo.GetOrganizationByUserAsync(userId)
+           ?? throw new KeyNotFoundException("PR nahi mili");
+            if (!await _prRepo.IsPrInOrgAsync(prId, org.Id))
+                throw new KeyNotFoundException("PR nahi mili");
+
             var pr = await _prRepo.GetEntityByIdAsync(prId)
                 ?? throw new KeyNotFoundException("PR nahi mili");
 

@@ -49,6 +49,16 @@ public partial class Review
 
     public DateTime CreatedAt { get; set; }
 
+    public long? GitHubReviewId { get; set; }
+
+    public DateTime? GitHubPostedAt { get; set; }
+
+    public bool UsedRag { get; set; }
+
+    public int? ContextChunkCount { get; set; }
+
+    public string? ContextSummary { get; set; }
+
     public virtual ICollection<ActivityLog> ActivityLogs { get; set; } = new List<ActivityLog>();
 
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();

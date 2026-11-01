@@ -1,10 +1,11 @@
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Models.Entities;
 using Repository.GitHub;
 using Repository.GitHubRepos;
-using System;
+using Services.Rag;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http.Headers;
@@ -42,7 +43,8 @@ namespace Services.GitHubRepos
             _logger = logger;
             _db = dbContext;
             _webhookSecret = config["GitHub:WebhookSecret"] ?? throw new InvalidOperationException("WebhookSecret missing");
-            _backendUrl = config["App:BackendUrl"] ?? "https://localhost:7260";
+   //         _backendUrl = config["App:BackendUrl"] ?? "https://localhost:7260";
+            _backendUrl = config["GitHub:BackendUrl"]!;
         }
 
         // ─── User ki GitHub repos fetch karo ─────────────────────────────────
@@ -147,6 +149,8 @@ namespace Services.GitHubRepos
             // Existing open PRs sync karo
             var prsSynced = await SyncOpenPrsAsync(token, request.FullName, repoId);
 
+            BackgroundJob.Enqueue<IIndexRepoJob>(j => j.ExecuteAsync(repoId, false));   // build the vector index
+
             _logger.LogInformation("Repo imported: {Repo} — Webhook: {Wh} — PRs: {Prs}",
                 request.FullName, webhookRegistered, prsSynced);
 
@@ -181,7 +185,7 @@ namespace Services.GitHubRepos
             {
                 name = "web",
                 active = true,
-                events = new[] { "pull_request" },
+                events = new[] { "pull_request", "push" },
                 config = new
                 {
                     url = webhookUrl,
@@ -196,6 +200,8 @@ namespace Services.GitHubRepos
 
             var response = await client.PostAsync(
                 $"https://api.github.com/repos/{repoFullName}/hooks", content);
+
+
 
             if (!response.IsSuccessStatusCode)
             {
@@ -316,6 +322,7 @@ namespace Services.GitHubRepos
                     // PR save karo
                     var newPr = new Models.Entities.PullRequest
                     {
+                        HeadSha = pr.GetProperty("head").GetProperty("sha").GetString(),
                         RepositoryId = repoId,
                         GitHubPrId = githubPrId,
                         Number = prNumber,

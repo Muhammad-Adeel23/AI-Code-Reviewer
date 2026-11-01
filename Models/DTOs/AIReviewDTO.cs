@@ -35,6 +35,7 @@ namespace Models.DTOs
             public string? Suggestion { get; set; }
             public string? Category { get; set; }
             public string Status { get; set; } = string.Empty;
+            public int? RuleId { get; set; }
         }
 
         public class ReviewHistoryDto
