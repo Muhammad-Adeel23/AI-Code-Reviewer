@@ -17,5 +17,7 @@ namespace Repository.AIReview
         Task<int> GetNextVersionAsync(int prId);
         Task<List<ReviewIssue>> GetIssuesByReviewAsync(int reviewId);
         Task UpdateIssueStatusAsync(int issueId, string status, int updatedBy);
+        Task<int?> GetPrIdByIssueAsync(int issueId);
+
     }
 }

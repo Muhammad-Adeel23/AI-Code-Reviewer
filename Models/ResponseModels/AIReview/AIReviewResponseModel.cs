@@ -29,5 +29,6 @@ namespace Models.ResponseModels.AIReview
         public string? Suggestion { get; set; }
         public string? Category { get; set; }
         // Security | Performance | Style | Logic
+        public int? RuleId { get; set; }
     }
 }

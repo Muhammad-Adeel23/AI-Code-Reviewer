@@ -17,13 +17,27 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<ActivityLog> ActivityLogs { get; set; }
 
+    public virtual DbSet<AggregatedCounter> AggregatedCounters { get; set; }
+
     public virtual DbSet<ApplicationLookup> ApplicationLookups { get; set; }
 
     public virtual DbSet<ApplicationLookupType> ApplicationLookupTypes { get; set; }
 
+    public virtual DbSet<Counter> Counters { get; set; }
+
     public virtual DbSet<EmailNotification> EmailNotifications { get; set; }
 
+    public virtual DbSet<Hash> Hashes { get; set; }
+
     public virtual DbSet<InvitationTemplate> InvitationTemplates { get; set; }
+
+    public virtual DbSet<Job> Jobs { get; set; }
+
+    public virtual DbSet<JobParameter> JobParameters { get; set; }
+
+    public virtual DbSet<JobQueue> JobQueues { get; set; }
+
+    public virtual DbSet<List> Lists { get; set; }
 
     public virtual DbSet<McpApiKey> McpApiKeys { get; set; }
 
@@ -43,6 +57,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<RefreshToken> RefreshTokens { get; set; }
 
+    public virtual DbSet<RepoIndexState> RepoIndexStates { get; set; }
+
+    public virtual DbSet<RepoIndexedFile> RepoIndexedFiles { get; set; }
+
     public virtual DbSet<Repository> Repositories { get; set; }
 
     public virtual DbSet<RepositoryReviewer> RepositoryReviewers { get; set; }
@@ -51,9 +69,19 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<ReviewIssue> ReviewIssues { get; set; }
 
+    public virtual DbSet<ReviewRule> ReviewRules { get; set; }
+
     public virtual DbSet<ReviewerAssignment> ReviewerAssignments { get; set; }
 
+    public virtual DbSet<Schema> Schemas { get; set; }
+
+    public virtual DbSet<Server> Servers { get; set; }
+
+    public virtual DbSet<Set> Sets { get; set; }
+
     public virtual DbSet<Setting> Settings { get; set; }
+
+    public virtual DbSet<State> States { get; set; }
 
     public virtual DbSet<TeamInvitation> TeamInvitations { get; set; }
 
@@ -61,6 +89,9 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<UserSetting> UserSettings { get; set; }
 
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
+        => optionsBuilder.UseSqlServer("Data Source=db56455.public.databaseasp.net;Initial Catalog=db56455;User ID=db56455;Password=H!tm@n47;Connect Timeout=30;Encrypt=False;");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -97,6 +128,18 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("FK_AL_User");
         });
 
+        modelBuilder.Entity<AggregatedCounter>(entity =>
+        {
+            entity.HasKey(e => e.Key).HasName("PK_HangFire_CounterAggregated");
+
+            entity.ToTable("AggregatedCounter", "HangFire");
+
+            entity.HasIndex(e => e.ExpireAt, "IX_HangFire_AggregatedCounter_ExpireAt").HasFilter("([ExpireAt] IS NOT NULL)");
+
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.ExpireAt).HasColumnType("datetime");
+        });
+
         modelBuilder.Entity<ApplicationLookup>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PK__Applicat__3214EC0765E4ED45");
@@ -125,6 +168,17 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Name).HasMaxLength(250);
         });
 
+        modelBuilder.Entity<Counter>(entity =>
+        {
+            entity.HasKey(e => new { e.Key, e.Id }).HasName("PK_HangFire_Counter");
+
+            entity.ToTable("Counter", "HangFire");
+
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.ExpireAt).HasColumnType("datetime");
+        });
+
         modelBuilder.Entity<EmailNotification>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PK__EmailNot__3214EC07E2F47749");
@@ -151,6 +205,18 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("FK_EmailNotification_Template");
         });
 
+        modelBuilder.Entity<Hash>(entity =>
+        {
+            entity.HasKey(e => new { e.Key, e.Field }).HasName("PK_HangFire_Hash");
+
+            entity.ToTable("Hash", "HangFire");
+
+            entity.HasIndex(e => e.ExpireAt, "IX_HangFire_Hash_ExpireAt").HasFilter("([ExpireAt] IS NOT NULL)");
+
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.Field).HasMaxLength(100);
+        });
+
         modelBuilder.Entity<InvitationTemplate>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("PK__Invitati__3214EC07391A8106");
@@ -164,6 +230,58 @@ public partial class AppDbContext : DbContext
                 .HasPrincipalKey(p => p.SeqKey)
                 .HasForeignKey(d => d.SeqKey)
                 .HasConstraintName("FK_InvitationTemplate_ApplicationLookup");
+        });
+
+        modelBuilder.Entity<Job>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK_HangFire_Job");
+
+            entity.ToTable("Job", "HangFire");
+
+            entity.HasIndex(e => e.ExpireAt, "IX_HangFire_Job_ExpireAt").HasFilter("([ExpireAt] IS NOT NULL)");
+
+            entity.HasIndex(e => e.StateName, "IX_HangFire_Job_StateName").HasFilter("([StateName] IS NOT NULL)");
+
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.ExpireAt).HasColumnType("datetime");
+            entity.Property(e => e.StateName).HasMaxLength(20);
+        });
+
+        modelBuilder.Entity<JobParameter>(entity =>
+        {
+            entity.HasKey(e => new { e.JobId, e.Name }).HasName("PK_HangFire_JobParameter");
+
+            entity.ToTable("JobParameter", "HangFire");
+
+            entity.Property(e => e.Name).HasMaxLength(40);
+
+            entity.HasOne(d => d.Job).WithMany(p => p.JobParameters)
+                .HasForeignKey(d => d.JobId)
+                .HasConstraintName("FK_HangFire_JobParameter_Job");
+        });
+
+        modelBuilder.Entity<JobQueue>(entity =>
+        {
+            entity.HasKey(e => new { e.Queue, e.Id }).HasName("PK_HangFire_JobQueue");
+
+            entity.ToTable("JobQueue", "HangFire");
+
+            entity.Property(e => e.Queue).HasMaxLength(50);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.FetchedAt).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<List>(entity =>
+        {
+            entity.HasKey(e => new { e.Key, e.Id }).HasName("PK_HangFire_List");
+
+            entity.ToTable("List", "HangFire");
+
+            entity.HasIndex(e => e.ExpireAt, "IX_HangFire_List_ExpireAt").HasFilter("([ExpireAt] IS NOT NULL)");
+
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.ExpireAt).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<McpApiKey>(entity =>
@@ -310,6 +428,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.AuthorGitHubLogin).HasMaxLength(100);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
             entity.Property(e => e.GitHubPrUrl).HasMaxLength(500);
+            entity.Property(e => e.HeadSha).HasMaxLength(64);
             entity.Property(e => e.ReviewStatus)
                 .HasMaxLength(20)
                 .HasDefaultValue("Pending");
@@ -361,6 +480,36 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("FK_RefreshTokens_Users");
         });
 
+        modelBuilder.Entity<RepoIndexState>(entity =>
+        {
+            entity.HasIndex(e => e.RepositoryId, "UQ_RIS_Repository").IsUnique();
+
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.LastCommitSha).HasMaxLength(64);
+            entity.Property(e => e.LastError).HasMaxLength(500);
+            entity.Property(e => e.Status)
+                .HasMaxLength(20)
+                .HasDefaultValue("Pending");
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Repository).WithOne(p => p.RepoIndexState)
+                .HasForeignKey<RepoIndexState>(d => d.RepositoryId)
+                .HasConstraintName("FK_RIS_Repository");
+        });
+
+        modelBuilder.Entity<RepoIndexedFile>(entity =>
+        {
+            entity.HasIndex(e => new { e.RepositoryId, e.FilePath }, "UQ_RIF_RepoPath").IsUnique();
+
+            entity.Property(e => e.ContentHash).HasMaxLength(64);
+            entity.Property(e => e.FilePath).HasMaxLength(500);
+            entity.Property(e => e.IndexedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Repository).WithMany(p => p.RepoIndexedFiles)
+                .HasForeignKey(d => d.RepositoryId)
+                .HasConstraintName("FK_RIF_Repository");
+        });
+
         modelBuilder.Entity<Repository>(entity =>
         {
             entity.HasIndex(e => e.FullName, "IX_Repo_FullName");
@@ -371,6 +520,7 @@ public partial class AppDbContext : DbContext
 
             entity.Property(e => e.AutoReview).HasDefaultValue(true);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.CustomInstructions).HasMaxLength(2000);
             entity.Property(e => e.DefaultBranch)
                 .HasMaxLength(100)
                 .HasDefaultValue("main");
@@ -386,6 +536,7 @@ public partial class AppDbContext : DbContext
                 .HasMaxLength(20)
                 .HasDefaultValue("ALL");
             entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(getutcdate())");
+            entity.Property(e => e.UseRag).HasDefaultValue(true);
             entity.Property(e => e.WebhookSecret).HasMaxLength(256);
 
             entity.HasOne(d => d.Organization).WithMany(p => p.Repositories)
@@ -428,6 +579,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasIndex(e => new { e.PullRequestId, e.Version }, "UQ_Rev_PRVersion").IsUnique();
 
+            entity.Property(e => e.ContextSummary).HasMaxLength(2000);
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
             entity.Property(e => e.ErrorMessage).HasMaxLength(500);
             entity.Property(e => e.HangfireJobId).HasMaxLength(100);
@@ -451,6 +603,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.CreatedAt).HasDefaultValueSql("(getutcdate())");
             entity.Property(e => e.Description).HasMaxLength(1000);
             entity.Property(e => e.FileName).HasMaxLength(500);
+            entity.Property(e => e.Fingerprint).HasMaxLength(40);
             entity.Property(e => e.Severity).HasMaxLength(10);
             entity.Property(e => e.Status)
                 .HasMaxLength(20)
@@ -464,6 +617,30 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.StatusUpdatedByNavigation).WithMany(p => p.ReviewIssues)
                 .HasForeignKey(d => d.StatusUpdatedBy)
                 .HasConstraintName("FK_RI_StatusUser");
+        });
+
+        modelBuilder.Entity<ReviewRule>(entity =>
+        {
+            entity.HasIndex(e => new { e.OrganizationId, e.IsEnabled }, "IX_RR_Org");
+
+            entity.Property(e => e.Category).HasMaxLength(50);
+            entity.Property(e => e.CreatedAt).HasDefaultValueSql("(sysutcdatetime())");
+            entity.Property(e => e.Description).HasMaxLength(1000);
+            entity.Property(e => e.FilePattern).HasMaxLength(300);
+            entity.Property(e => e.IsEnabled).HasDefaultValue(true);
+            entity.Property(e => e.Severity)
+                .HasMaxLength(12)
+                .HasDefaultValue("MEDIUM");
+            entity.Property(e => e.Title).HasMaxLength(200);
+            entity.Property(e => e.UpdatedAt).HasDefaultValueSql("(sysutcdatetime())");
+
+            entity.HasOne(d => d.Organization).WithMany(p => p.ReviewRules)
+                .HasForeignKey(d => d.OrganizationId)
+                .HasConstraintName("FK_RR_Org");
+
+            entity.HasOne(d => d.Repository).WithMany(p => p.ReviewRules)
+                .HasForeignKey(d => d.RepositoryId)
+                .HasConstraintName("FK_ReviewRules_Repository");
         });
 
         modelBuilder.Entity<ReviewerAssignment>(entity =>
@@ -500,6 +677,42 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("FK_RA_Reviewer");
         });
 
+        modelBuilder.Entity<Schema>(entity =>
+        {
+            entity.HasKey(e => e.Version).HasName("PK_HangFire_Schema");
+
+            entity.ToTable("Schema", "HangFire");
+
+            entity.Property(e => e.Version).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<Server>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("PK_HangFire_Server");
+
+            entity.ToTable("Server", "HangFire");
+
+            entity.HasIndex(e => e.LastHeartbeat, "IX_HangFire_Server_LastHeartbeat");
+
+            entity.Property(e => e.Id).HasMaxLength(200);
+            entity.Property(e => e.LastHeartbeat).HasColumnType("datetime");
+        });
+
+        modelBuilder.Entity<Set>(entity =>
+        {
+            entity.HasKey(e => new { e.Key, e.Value }).HasName("PK_HangFire_Set");
+
+            entity.ToTable("Set", "HangFire");
+
+            entity.HasIndex(e => e.ExpireAt, "IX_HangFire_Set_ExpireAt").HasFilter("([ExpireAt] IS NOT NULL)");
+
+            entity.HasIndex(e => new { e.Key, e.Score }, "IX_HangFire_Set_Score");
+
+            entity.Property(e => e.Key).HasMaxLength(100);
+            entity.Property(e => e.Value).HasMaxLength(256);
+            entity.Property(e => e.ExpireAt).HasColumnType("datetime");
+        });
+
         modelBuilder.Entity<Setting>(entity =>
         {
             entity.ToTable("Setting");
@@ -508,6 +721,24 @@ public partial class AppDbContext : DbContext
                 .HasMaxLength(250)
                 .IsUnicode(false);
             entity.Property(e => e.Value).IsUnicode(false);
+        });
+
+        modelBuilder.Entity<State>(entity =>
+        {
+            entity.HasKey(e => new { e.JobId, e.Id }).HasName("PK_HangFire_State");
+
+            entity.ToTable("State", "HangFire");
+
+            entity.HasIndex(e => e.CreatedAt, "IX_HangFire_State_CreatedAt");
+
+            entity.Property(e => e.Id).ValueGeneratedOnAdd();
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.Name).HasMaxLength(20);
+            entity.Property(e => e.Reason).HasMaxLength(100);
+
+            entity.HasOne(d => d.Job).WithMany(p => p.States)
+                .HasForeignKey(d => d.JobId)
+                .HasConstraintName("FK_HangFire_State_Job");
         });
 
         modelBuilder.Entity<TeamInvitation>(entity =>

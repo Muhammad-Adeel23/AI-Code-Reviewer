@@ -61,6 +61,8 @@ public partial class PullRequest
 
     public DateTime UpdatedAt { get; set; }
 
+    public string? HeadSha { get; set; }
+
     public virtual ICollection<ActivityLog> ActivityLogs { get; set; } = new List<ActivityLog>();
 
     public virtual User? AuthorUser { get; set; }

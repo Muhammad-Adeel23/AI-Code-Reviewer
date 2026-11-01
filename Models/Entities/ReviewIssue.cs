@@ -29,6 +29,12 @@ public partial class ReviewIssue
 
     public DateTime CreatedAt { get; set; }
 
+    public int? RuleId { get; set; }
+
+    public bool PostedInline { get; set; }
+
+    public string? Fingerprint { get; set; }
+
     public virtual Review Review { get; set; } = null!;
 
     public virtual User? StatusUpdatedByNavigation { get; set; }

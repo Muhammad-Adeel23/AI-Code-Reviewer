@@ -168,26 +168,15 @@ namespace Services.GitHub
         public async Task ProcessPrEventAsync(string payload)
         {
             var pullRequest = await _repo.ProcessPrEventAsync(payload);
+            if (pullRequest is null) return;
+            if (pullRequest.Repository?.AutoReview != true) return;
 
-            if (pullRequest is null)
-                return;
+            var prId = pullRequest.Id;
+            // v1 wrote "Reviewing" here, a status nothing else understands (UI showed "Unknown")
+            await _repo.UpdateReviewStatusAsync(prId, "Queued");
+            BackgroundJob.Enqueue<IAiReviewJob>(job => job.ExecuteAsync(prId, null));   // new 2nd arg = PerformContext
 
-            // Repository navigation property available honi chahiye
-            if (pullRequest.Repository?.AutoReview != true)
-            {
-                return;
-            }
-
-            pullRequest.ReviewStatus = "Queued";
-
-            await _repo.UpdateReviewStatusAsync(pullRequest.Id,"Reviewing");
-
-            BackgroundJob.Enqueue<IAiReviewJob>(
-                job => job.ExecuteAsync(pullRequest.Id));
-
-            _logger.LogInformation(
-                "AI Review job enqueued — PR #{PrNumber}",
-                pullRequest.Number);
+            _logger.LogInformation("AI Review job enqueued - PR #{PrNumber}", pullRequest.Number);
         }
         public bool VerifySignature(string payload, string signature, string secret)
         {
