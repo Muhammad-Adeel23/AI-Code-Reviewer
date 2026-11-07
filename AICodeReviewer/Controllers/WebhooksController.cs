@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Models.Entities;
 using Services.GitHub;
 using Services.Rag;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,6 +33,8 @@ namespace AICodeReviewer.Controllers
         [HttpPost("github")]
         public async Task<IActionResult> GitHubWebhook()
         {
+            var b = _dbContext.Users.AsNoTracking().FirstOrDefault();
+            var c = "test";
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
 
