@@ -17,12 +17,14 @@ namespace AICodeReviewer.Controllers
     {
         private readonly IGitHubConnectService _gitHubConnectService;
         private readonly IConfiguration _config;
+        private readonly AppDbContext _dbContext;
         private readonly ILogger<WebhooksController> _logger;
 
-        public WebhooksController(IGitHubConnectService gitHubConnectService, IConfiguration config, ILogger<WebhooksController> logger)
+        public WebhooksController(IGitHubConnectService gitHubConnectService, IConfiguration config, AppDbContext dbContext, ILogger<WebhooksController> logger)
         {
             _gitHubConnectService = gitHubConnectService;
             _config = config;
+            _dbContext = dbContext;
             _logger = logger;
         }
 
@@ -30,6 +32,7 @@ namespace AICodeReviewer.Controllers
         [HttpPost("github")]
         public async Task<IActionResult> GitHubWebhook()
         {
+            var a = _dbContext.Users.AsNoTracking().FirstOrDefault();
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
 
