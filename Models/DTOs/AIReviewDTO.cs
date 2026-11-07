@@ -22,6 +22,10 @@ namespace Models.DTOs
             public int MediumIssueCount { get; set; }
             public int LowIssueCount { get; set; }
             public DateTime? ReviewedAt { get; set; }
+            public bool UsedRag { get; set; }
+            public int? ContextChunkCount { get; set; }
+            public string? ContextSummary { get; set; }     // "path:10-40; path2:5-20; ..."
+            public long? GitHubReviewId { get; set; }
             public List<ReviewIssueDto> Issues { get; set; } = new();
         }
 
@@ -35,6 +39,7 @@ namespace Models.DTOs
             public string? Suggestion { get; set; }
             public string? Category { get; set; }
             public string Status { get; set; } = string.Empty;
+            public int? RuleId { get; set; }
         }
 
         public class ReviewHistoryDto

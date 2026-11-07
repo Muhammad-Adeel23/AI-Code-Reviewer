@@ -25,5 +25,7 @@ public partial class Organization
 
     public virtual ICollection<Repository> Repositories { get; set; } = new List<Repository>();
 
+    public virtual ICollection<ReviewRule> ReviewRules { get; set; } = new List<ReviewRule>();
+
     public virtual ICollection<TeamInvitation> TeamInvitations { get; set; } = new List<TeamInvitation>();
 }

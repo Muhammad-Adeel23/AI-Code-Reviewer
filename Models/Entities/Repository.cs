@@ -49,6 +49,10 @@ public partial class Repository
 
     public int? OrganizationId { get; set; }
 
+    public string? CustomInstructions { get; set; }
+
+    public bool UseRag { get; set; }
+
     public virtual ICollection<ActivityLog> ActivityLogs { get; set; } = new List<ActivityLog>();
 
     public virtual ICollection<Notification> Notifications { get; set; } = new List<Notification>();
@@ -59,5 +63,11 @@ public partial class Repository
 
     public virtual ICollection<PullRequest> PullRequests { get; set; } = new List<PullRequest>();
 
+    public virtual RepoIndexState? RepoIndexState { get; set; }
+
+    public virtual ICollection<RepoIndexedFile> RepoIndexedFiles { get; set; } = new List<RepoIndexedFile>();
+
     public virtual ICollection<RepositoryReviewer> RepositoryReviewers { get; set; } = new List<RepositoryReviewer>();
+
+    public virtual ICollection<ReviewRule> ReviewRules { get; set; } = new List<ReviewRule>();
 }

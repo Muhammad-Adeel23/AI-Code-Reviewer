@@ -1,14 +1,20 @@
 ﻿using Components.Common;
 using Hangfire;
+using Hangfire.Server;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Models.Entities;
 using Models.ResponseModels.AIReview;
+using Org.BouncyCastle.Bcpg.Sig;
 using Repository.AIReview;
 using Repository.Email;
+using Repository.ReviewExecutionRepository;
 using Repository.SignalRNotifier;
 using Services.AIReview;
 using Services.AiReviewJob;
+using Services.GitHubPoster;
+using Services.ReviewPipeline;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,216 +25,149 @@ namespace Services.AiReviewJob
 {
     public class AiReviewJob : IAiReviewJob
     {
-        private readonly AppDbContext _db;
-        private readonly IAiReviewService _aiService;
-        private readonly IReviewRepository _reviewRepo;
+        private readonly IReviewExecutionRepository _repo;
+        private readonly IReviewPipeline _pipeline;
         private readonly ISignalRNotifier _signalR;
         private readonly IEmailSenderRepository _emailRepo;
+        private readonly IGitHubReviewPoster _poster;
         private readonly ILogger<AiReviewJob> _logger;
+        private readonly bool _postToGitHub;
+        private readonly bool _ragEnabled;
 
-        public AiReviewJob(
-            AppDbContext db,
-            IAiReviewService aiService,
-            IReviewRepository reviewRepo,
-            ISignalRNotifier signalR,
-            IEmailSenderRepository emailRepo,
-            ILogger<AiReviewJob> logger)
+        public AiReviewJob(IReviewExecutionRepository repo, IReviewPipeline pipeline, ISignalRNotifier signalR,
+            IEmailSenderRepository emailRepo, IGitHubReviewPoster poster, IConfiguration cfg, ILogger<AiReviewJob> logger)
         {
-            _db = db;
-            _aiService = aiService;
-            _reviewRepo = reviewRepo;
-            _signalR = signalR;
-            _emailRepo = emailRepo;
-            _logger = logger;
+            _repo = repo; _pipeline = pipeline; _signalR = signalR; _emailRepo = emailRepo;
+            _poster = poster; _logger = logger;
+            _postToGitHub = cfg.GetValue("Review:PostToGitHub", true);
+            _ragEnabled = cfg.GetValue("Rag:Enabled", true);
         }
 
-        [AutomaticRetry(Attempts = 3, DelaysInSeconds = new[] { 60, 120, 300 })]
-        public async Task ExecuteAsync(int pullRequestId)
+        public async Task ExecuteAsync(int pullRequestId, PerformContext? context)
         {
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var jobId = context?.BackgroundJob?.Id;
 
-            // 1. PR fetch karo
-            var pr = await _db.PullRequests
-                .Include(p => p.Repository)
-                    .ThenInclude(r => r.Owner)
-                .Include(p => p.PullRequestFiles)
-                .FirstOrDefaultAsync(p => p.Id == pullRequestId);
-
+            var pr = await _repo.GetPullRequestForReviewAsync(pullRequestId);
             if (pr is null)
             {
                 _logger.LogError("PR not found: {Id}", pullRequestId);
                 return;
             }
 
-            var ownerId = pr.Repository.OwnerId;
-            _logger.LogInformation(
-                "AI Review starting — PR #{Num} | Repo: {Repo}",
-                pr.Number, pr.Repository.FullName);
+            var repo = pr.Repository;
+            var targets = NotifyTargets(pr);
+            _logger.LogInformation("AI Review starting - PR #{Num} | Repo: {Repo}", pr.Number, repo.FullName);
 
-            // 2. Review record create karo
-            var version = await _reviewRepo.GetNextVersionAsync(pullRequestId);
-            var review = await _reviewRepo.CreateAsync(new Review
-            {
-                PullRequestId = pullRequestId,
-                Version = version,
-                Status = "Processing",
-                CreatedAt = DateTime.UtcNow
-            });
+            var review = await _repo.AcquireReviewAsync(pr.Id, jobId);
+            await _repo.MarkAnalyzingAsync(pr.Id);
 
-            // 3. PR status update karo
-            pr.ReviewStatus = "Analyzing";
-            pr.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync();
-
-            // 4. SignalR — review started notify karo
-            await _signalR.NotifyReviewStartedAsync(
-                ownerId, pr.Id, pr.Number, pr.Repository.Name);
+            foreach (var uid in targets)
+                await SafeNotify(() => _signalR.NotifyReviewStartedAsync(uid, pr.Id, pr.Number, repo.Name));
 
             try
             {
-                // 5. Diff prepare karo
-                var diff = BuildDiff(pr.PullRequestFiles.ToList());
+                var piped = await _pipeline.RunAsync(pr, _ragEnabled && repo.UseRag);
+                var ai = piped.Result;
 
-                if (string.IsNullOrEmpty(diff))
+                // ── sanitize + apply repo severity threshold ────────────────────────
+                var kept = ai.Issues
+                    .Where(i => !string.IsNullOrWhiteSpace(i.Description))
+                    .Where(i => Rank(i.Severity) <= ThresholdRank(repo.SeverityThreshold))
+                    .ToList();
+
+                var high = kept.Count(i => i.Severity == "HIGH");
+                var med = kept.Count(i => i.Severity == "MEDIUM");
+                var low = kept.Count(i => i.Severity == "LOW");
+                var sug = kept.Count(i => i.Severity == "SUGGESTION");
+
+                // The model's own boolean is only advisory: a HIGH issue ALWAYS blocks.
+                var merge = ai.MergeRecommendation && high == 0;
+
+                var newIssues = kept.Select(i => new NewReviewIssue(
+                    i.Severity,
+                    Cut(i.FileName, 500),
+                    i.LineNumber is > 0 ? i.LineNumber : null,
+                    Cut(i.Description, 1000)!,
+                    Cut(i.Suggestion, 1000),
+                    Cut(i.Category, 50),
+                    IssueFingerprint.Compute(i.FileName, i.Category, i.Description),
+                    i.RuleId)).ToList();
+
+                sw.Stop();
+                var done = await _repo.CompleteReviewAsync(new ReviewCompletion(
+                    review.Id, pr.Id, review.Version,
+                    ai.CodeQualityScore, ai.SecurityScore, ai.MaintainabilityScore, ai.OverallScore, merge, ai.AiSummary,
+                    high, med, low, sug,
+                    ai.PromptTokens, ai.CompletionTokens, (int)sw.ElapsedMilliseconds,
+                    piped.UsedRag, piped.ContextChunks, piped.ContextSummary, newIssues));
+
+                // ── GitHub (non-fatal) ──────────────────────────────────────────────
+                var token = repo.Owner?.GitHubAccessToken;
+                if (_postToGitHub && !string.IsNullOrEmpty(token))
                 {
-                    _logger.LogWarning("PR #{Num} mein koi diff nahi", pr.Number);
-                    diff = "No code changes found in this PR.";
+                    try { await _poster.PostAsync(pr, done.Review, done.Issues, token, piped.RuleTitles); }
+                    catch (Exception ex) { _logger.LogError(ex, "Posting to GitHub failed for PR #{Num}", pr.Number); }
                 }
 
-                // 6. Claude API call karo
-                var aiResult = await _aiService.ReviewCodeAsync(
-                    diff, pr.Title, pr.Description);
+                foreach (var uid in targets)
+                    await SafeNotify(() => _signalR.NotifyReviewCompletedAsync(
+                        uid, pr.Id, pr.Number, repo.Name, ai.OverallScore, high, merge));
 
-                // 7. Issues save karo
-                foreach (var issue in aiResult.Issues)
-                {
-                    _db.ReviewIssues.Add(new ReviewIssue
-                    {
-                        ReviewId = review.Id,
-                        Severity = issue.Severity,
-                        FileName = issue.FileName,
-                        LineNumber = issue.LineNumber,
-                        Description = issue.Description,
-                        Suggestion = issue.Suggestion,
-                        Category = issue.Category,
-                        Status = "Open",
-                        CreatedAt = DateTime.UtcNow
-                    });
-                }
+                await QueueReviewCompleteEmailAsync(pr, ai.OverallScore, high);
 
-                // 8. Review update karo
-                var highCount = aiResult.Issues.Count(i => i.Severity == "HIGH");
-                var medCount = aiResult.Issues.Count(i => i.Severity == "MEDIUM");
-                var lowCount = aiResult.Issues.Count(i => i.Severity == "LOW");
-                var sugCount = aiResult.Issues.Count(i => i.Severity == "SUGGESTION");
-
-                stopwatch.Stop();
-
-                review.Status = "Completed";
-                review.CodeQualityScore = aiResult.CodeQualityScore;
-                review.SecurityScore = aiResult.SecurityScore;
-                review.MaintainabilityScore = aiResult.MaintainabilityScore;
-                review.OverallScore = aiResult.OverallScore;
-                review.MergeRecommendation = aiResult.MergeRecommendation;
-                review.AiSummary = aiResult.AiSummary;
-                review.HighIssueCount = highCount;
-                review.MediumIssueCount = medCount;
-                review.LowIssueCount = lowCount;
-                review.SuggestionCount = sugCount;
-                review.PromptTokensUsed = aiResult.PromptTokens;
-                review.CompletionTokensUsed = aiResult.CompletionTokens;
-                review.ProcessingMs = (int)stopwatch.ElapsedMilliseconds;
-                review.ReviewedAt = DateTime.UtcNow;
-
-                await _db.SaveChangesAsync();
-
-                // 9. PR update karo
-                pr.ReviewStatus = "Completed";
-                pr.MergeRecommendation = aiResult.MergeRecommendation;
-                pr.LatestAiScore = aiResult.OverallScore;
-                pr.HighIssueCount = highCount;
-                pr.MediumIssueCount = medCount;
-                pr.LowIssueCount = lowCount;
-                pr.CurrentReviewVersion = version;
-                pr.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-
-                // 10. SignalR — review complete notify karo
-                await _signalR.NotifyReviewCompletedAsync(
-                    ownerId, pr.Id, pr.Number, pr.Repository.Name,
-                    aiResult.OverallScore, highCount, aiResult.MergeRecommendation);
-
-                // 11. Email queue karo
-                await QueueReviewCompleteEmailAsync(pr, review, aiResult);
-
-                _logger.LogInformation(
-                    "Review completed — PR #{Num} | Score: {Score} | Issues: {H}H {M}M {L}L",
-                    pr.Number, aiResult.OverallScore, highCount, medCount, lowCount);
+                _logger.LogInformation("Review completed - PR #{Num} v{V} | Score {Score} | {H}H {M}M {L}L | rag={Rag} chunks={C}",
+                    pr.Number, review.Version, ai.OverallScore, high, med, low, piped.UsedRag, piped.ContextChunks);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Review failed — PR #{Num}", pr.Number);
+                _logger.LogError(ex, "Review failed - PR #{Num}", pr.Number);
+                try { await _repo.FailReviewAsync(review.Id, pr.Id, ex.Message); }
+                catch (Exception inner) { _logger.LogError(inner, "Could not persist failure state"); }
 
-                // Review failed update karo
-                review.Status = "Failed";
-                review.ErrorMessage = ex.Message;
-                await _db.SaveChangesAsync();
+                foreach (var uid in targets)
+                    await SafeNotify(() => _signalR.NotifyReviewFailedAsync(uid, pr.Id, pr.Number, Cut(ex.Message, 200) ?? "Review failed"));
 
-                // PR status update
-                pr.ReviewStatus = "Failed";
-                pr.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-
-                // SignalR notify
-                await _signalR.NotifyReviewFailedAsync(
-                    ownerId, pr.Id, pr.Number, ex.Message);
-
-                throw; // Hangfire retry ke liye
+                throw;   // let Hangfire retry (max 2 attempts, see IAiReviewJob)
             }
         }
 
-        // ─── Diff Build karo from PullRequestFiles ────────────────────────────────
+        // ── helpers ──────────────────────────────────────────────────────────────
 
-        private static string BuildDiff(List<PullRequestFile> files)
+        private static List<int> NotifyTargets(Models.Entities.PullRequest pr)
         {
-            if (!files.Any()) return string.Empty;
-
-            var sb = new System.Text.StringBuilder();
-
-            foreach (var file in files.Take(20)) // Max 20 files
-            {
-                sb.AppendLine($"=== {file.FileName} ({file.Status}) ===");
-                sb.AppendLine($"+{file.Additions} -{file.Deletions}");
-
-                if (!string.IsNullOrEmpty(file.Patch))
-                {
-                    // Patch too large hone par truncate karo
-                    var patch = file.Patch.Length > 5000
-                        ? file.Patch[..5000] + "\n... (truncated)"
-                        : file.Patch;
-
-                    sb.AppendLine(patch);
-                }
-
-                sb.AppendLine();
-            }
-
-            return sb.ToString();
+            var ids = new List<int> { pr.Repository.OwnerId };
+            if (pr.AuthorUserId is int author && author != pr.Repository.OwnerId) ids.Add(author);
+            return ids;
         }
 
-        // ─── Email Queue ──────────────────────────────────────────────────────────
+        private async Task SafeNotify(Func<Task> send)
+        {
+            try { await send(); } catch (Exception ex) { _logger.LogWarning(ex, "SignalR notify failed"); }
+        }
 
-        private async Task QueueReviewCompleteEmailAsync(
-            Models.Entities.PullRequest pr, Review review, AiReviewResult result)
+        private static int Rank(string s) => s switch { "HIGH" => 0, "MEDIUM" => 1, "LOW" => 2, _ => 3 };
+
+        private static int ThresholdRank(string? t) => (t ?? "ALL").ToUpperInvariant() switch
+        {
+            "HIGH" => 0,
+            "MEDIUM" => 1,
+            "LOW" => 2,
+            _ => 3   // "ALL" / "SUGGESTION" / unknown -> keep everything
+        };
+
+        private static string? Cut(string? s, int max) =>
+            string.IsNullOrEmpty(s) ? s : (s.Length <= max ? s : s[..(max - 3)] + "...");
+
+        private async Task QueueReviewCompleteEmailAsync(Models.Entities.PullRequest pr, int score, int high)
         {
             try
             {
                 var owner = pr.Repository.Owner;
                 if (owner is null) return;
+                if (!await _repo.WantsReviewEmailAsync(owner.Id)) return;
 
-                var template = await _emailRepo.GetEmailTemplateById(
-                    (long)EmailTemplateEnum.ReviewComplete);
-
+                var template = await _emailRepo.GetEmailTemplateById((long)EmailTemplateEnum.ReviewComplete);
                 if (template is null) return;
 
                 var body = template.TemplateBody
@@ -236,20 +175,15 @@ namespace Services.AiReviewJob
                     .Replace("{{PrNumber}}", pr.Number.ToString())
                     .Replace("{{PrTitle}}", pr.Title)
                     .Replace("{{RepoName}}", pr.Repository.Name)
-                    .Replace("{{Score}}", result.OverallScore.ToString())
-                    .Replace("{{HighCount}}", result.Issues.Count(i => i.Severity == "HIGH").ToString())
-                    .Replace("{{ReviewLink}}", $"{pr.GitHubPrUrl}");
+                    .Replace("{{Score}}", score.ToString())
+                    .Replace("{{HighCount}}", high.ToString())
+                    .Replace("{{ReviewLink}}", pr.GitHubPrUrl);
 
-                await _emailRepo.QueueEmailAsync(
-                    owner.Email,
-                    template.Subject,
-                    body,
-                    (long)EmailTemplateEnum.ReviewComplete);
+                await _emailRepo.QueueEmailAsync(owner.Email, template.Subject, body, (long)EmailTemplateEnum.ReviewComplete);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Email queue karne mein masla");
-                // Email fail hone par review fail mat karo
+                _logger.LogError(ex, "Email queue failed");   // never fail the review because of email
             }
         }
     }

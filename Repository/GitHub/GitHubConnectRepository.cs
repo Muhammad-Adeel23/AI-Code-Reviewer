@@ -324,6 +324,8 @@ namespace Repository.GitHub
 
             var newPr = new Models.Entities.PullRequest
             {
+                HeadSha = pr.GetProperty("head").GetProperty("sha").GetString(),
+
                 RepositoryId = repo.Id,
                 GitHubPrId = githubPrId,
                 Number = prNumber,
@@ -431,6 +433,7 @@ namespace Repository.GitHub
             }
 
             pr.ReviewStatus = "Pending";
+            pr.HeadSha = root.GetProperty("pull_request").GetProperty("head").GetProperty("sha").GetString();
             pr.GitHubUpdatedAt = DateTime.UtcNow;
             pr.UpdatedAt = DateTime.UtcNow;
 

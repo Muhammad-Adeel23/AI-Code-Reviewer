@@ -23,7 +23,9 @@ namespace Repository.AIReview
             await _db.SaveChangesAsync();
             return review;
         }
-
+        public async Task<int?> GetPrIdByIssueAsync(int issueId) =>
+    await _db.ReviewIssues.Where(i => i.Id == issueId)
+        .Select(i => (int?)i.Review.PullRequestId).FirstOrDefaultAsync();
         public async Task<Review?> GetLatestByPrAsync(int prId)
         {
             return await _db.Reviews

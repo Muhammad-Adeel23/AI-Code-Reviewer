@@ -14,6 +14,7 @@ using Repository.EmailNotifications;
 using Repository.GitHub;
 using Repository.GitHubRepos;
 using Repository.PullRequest;
+using Repository.ReviewExecutionRepository;
 using Repository.Settings;
 using Repository.SignalRNotifier;
 using Repository.Teams;
@@ -22,10 +23,14 @@ using Services.AiReviewJob;
 using Services.Authentication;
 using Services.Email;
 using Services.GitHub;
+using Services.GitHubPoster;
 using Services.GitHubRepos;
 using Services.JWT;
 using Services.PullRequest;
+using Services.Rag;
+using Services.ReviewPipeline;
 using Services.Reviews;
+using Services.Rule;
 using Services.Teams;
 using System.Text;
 
@@ -74,6 +79,32 @@ builder.Services.AddScoped<IAiReviewService, AiReviewService>();
 builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
 builder.Services.AddScoped<ISignalRNotifier, SignalRNotifier>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
+// ─── v2: RAG + inline comments + rules (repository layer = Repository project, logic = Services) ───
+builder.Services.Configure<RagOptions>(builder.Configuration.GetSection("Rag"));
+builder.Services.Configure<EmbeddingOptions>(builder.Configuration.GetSection("Embedding"));
+
+// repositories (all DB access)
+builder.Services.AddScoped<Repository.Rag.IRepoIndexRepository, Repository.Rag.RepoIndexRepository>();
+builder.Services.AddScoped<Repository.Rag.IRepoSettingsRepository, Repository.Rag.RepoSettingsRepository>();
+builder.Services.AddScoped<IReviewExecutionRepository,ReviewExecutionRepository>();
+builder.Services.AddScoped<Repository.Rules.IReviewRuleRepository, Repository.Rules.ReviewRuleRepository>();
+
+// services
+builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
+builder.Services.AddScoped<IVectorStore, QdrantVectorStore>();
+builder.Services.AddScoped<ICodeChunker, CodeChunker>();
+builder.Services.AddScoped<IRepoIndexer, RepoIndexer>();
+builder.Services.AddScoped<IContextRetriever, ContextRetriever>();
+builder.Services.AddScoped<IIndexRepoJob, IndexRepoJob>();
+builder.Services.AddScoped<IPushEventHandler, PushEventHandler>();
+builder.Services.AddScoped<IRepoInsightService, RepoInsightService>();
+builder.Services.AddScoped<IReviewPipeline, ReviewPipeline>();
+builder.Services.AddScoped<IGitHubReviewPoster, GitHubReviewPoster>();
+builder.Services.AddScoped<IReviewRuleService, ReviewRuleService>();
+builder.Services.AddScoped<Services.Eval.IEvalService, Services.Eval.EvalService>();
+
+
+
 
 // ───────────────── JWT AUTHENTICATION ─────────────────
 var jwtSecret = builder.Configuration["Jwt:Secret"]
