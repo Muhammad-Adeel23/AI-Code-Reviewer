@@ -19,7 +19,8 @@ namespace AICodeReviewer.Controllers
         // POST /api/eval/run   (Owner only) - see README for the request format
         [HttpPost("run")]
         public async Task<IActionResult> Run([FromBody] EvalRequest request, CancellationToken ct)
-        {gsahj
+        {
+            var user;
             if (!string.Equals(User.FindFirstValue("orgRole"), "Owner", StringComparison.OrdinalIgnoreCase))
                 return StatusCode(403, ApiResponse<object>.Fail("Sirf Owner eval chala sakta hai"));
 
