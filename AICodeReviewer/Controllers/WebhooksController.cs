@@ -44,7 +44,7 @@ namespace AICodeReviewer.Controllers
                 _logger.LogError("GitHub:WebhookSecret is not configured - rejecting webhook");
                 return StatusCode(500, new { received = false });
             }
-            asdasda
+
             var signature = Request.Headers["X-Hub-Signature-256"].ToString();
             if (!_gitHubConnectService.VerifySignature(payload, signature, webhookSecret))
             {
