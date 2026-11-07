@@ -32,7 +32,6 @@ namespace AICodeReviewer.Controllers
         [HttpPost("github")]
         public async Task<IActionResult> GitHubWebhook()
         {
-            var a = _dbContext.Users.AsNoTracking().FirstOrDefault();
             var b = _dbContext.Users.AsNoTracking().FirstOrDefault();
 
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
