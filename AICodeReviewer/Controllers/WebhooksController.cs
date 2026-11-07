@@ -17,12 +17,14 @@ namespace AICodeReviewer.Controllers
     {
         private readonly IGitHubConnectService _gitHubConnectService;
         private readonly IConfiguration _config;
+        private readonly AppDbContext _dbContext;
         private readonly ILogger<WebhooksController> _logger;
 
-        public WebhooksController(IGitHubConnectService gitHubConnectService, IConfiguration config, ILogger<WebhooksController> logger)
+        public WebhooksController(IGitHubConnectService gitHubConnectService, IConfiguration config, AppDbContext dbContext, ILogger<WebhooksController> logger)
         {
             _gitHubConnectService = gitHubConnectService;
             _config = config;
+            _dbContext = dbContext;
             _logger = logger;
         }
 
@@ -56,6 +58,7 @@ namespace AICodeReviewer.Controllers
             // a fresh DI scope per job and gives retries + a dashboard.
             switch (eventType)
             {
+                
                 case "pull_request":
                     BackgroundJob.Enqueue<IGitHubConnectService>(s => s.ProcessPrEventAsync(payload));
                     break;

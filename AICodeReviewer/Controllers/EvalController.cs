@@ -20,6 +20,7 @@ namespace AICodeReviewer.Controllers
         [HttpPost("run")]
         public async Task<IActionResult> Run([FromBody] EvalRequest request, CancellationToken ct)
         {
+
             if (!string.Equals(User.FindFirstValue("orgRole"), "Owner", StringComparison.OrdinalIgnoreCase))
                 return StatusCode(403, ApiResponse<object>.Fail("Sirf Owner eval chala sakta hai"));
 
