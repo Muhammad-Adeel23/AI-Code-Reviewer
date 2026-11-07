@@ -192,11 +192,13 @@ namespace Services.GitHubPoster
             if (inBody.Count > 0)
             {
                 sb.AppendLine("### Other findings");
-                foreach (var i in inBody)
+                foreach (var i in inBody.Take(40))
                 {
                     var where = i.FileName == null ? "" : $" `{i.FileName}{(i.LineNumber != null ? ":" + i.LineNumber : "")}`";
                     sb.AppendLine($"- {Icon(i.Severity)} **{i.Severity}**{where} - {i.Description}");
                 }
+                if (inBody.Count > 40)
+                    sb.AppendLine($"- _...and {inBody.Count - 40} more findings in the dashboard._");
                 sb.AppendLine();
             }
             if (repeated > 0)

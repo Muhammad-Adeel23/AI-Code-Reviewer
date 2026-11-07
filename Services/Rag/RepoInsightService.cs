@@ -53,6 +53,17 @@ namespace Services.Rag
             await _index.EnsureStateAsync(repositoryId);
             BackgroundJob.Enqueue<IIndexRepoJob>(j => j.ExecuteAsync(repositoryId, force));
         }
+        public async Task<ReviewSettingsDto> GetSettingsAsync(int organizationId, int repositoryId)
+        {
+            var r = await RequireRepoAsync(organizationId, repositoryId);
+            return new ReviewSettingsDto
+            {
+                CustomInstructions = r.CustomInstructions,
+                UseRag = r.UseRag,
+                AutoReview = r.AutoReview,
+                SeverityThreshold = r.SeverityThreshold
+            };
+        }
 
         public async Task UpdateSettingsAsync(int organizationId, int repositoryId, ReviewSettingsRequest request)
         {

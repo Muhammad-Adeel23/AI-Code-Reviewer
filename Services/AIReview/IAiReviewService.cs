@@ -16,6 +16,7 @@ namespace Services.AIReview
         public string? Context { get; set; }
         /// <summary>Rules whose file scope matches at least one file of this batch.</summary>
         public List<RulePrompt> Rules { get; set; } = new();
+        public List<string> Files { get; set; } = new();
         public int DiffChars => Diff.Length;
     }
 

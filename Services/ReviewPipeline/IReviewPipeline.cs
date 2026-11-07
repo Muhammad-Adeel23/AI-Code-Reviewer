@@ -12,6 +12,7 @@ namespace Services.ReviewPipeline
     AiReviewResult Result, bool UsedRag, int ContextChunks, string? ContextSummary,
     List<string> OmittedFiles, IReadOnlyDictionary<int, string> RuleTitles);
 
+
     public interface IReviewPipeline
     {
         /// <param name="pr">Must have Repository and PullRequestFiles loaded.</param>

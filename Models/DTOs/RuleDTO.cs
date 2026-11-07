@@ -16,6 +16,13 @@ namespace Models.DTOs
         public string? LastError { get; set; }
         public bool UseRag { get; set; }
     }
+    public class ReviewSettingsDto
+    {
+        public string? CustomInstructions { get; set; }
+        public bool UseRag { get; set; }
+        public bool AutoReview { get; set; }
+        public string SeverityThreshold { get; set; } = "ALL";
+    }
 
     public class ReviewSettingsRequest
     {

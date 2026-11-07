@@ -24,6 +24,7 @@ namespace Services.AIReview
         private readonly string _model;
         private readonly int _maxTokens;
         private readonly string? _reasoningEffort;
+        private readonly int _maxParallel;
 
         public AiReviewService(IConfiguration config, IHttpClientFactory http, ILogger<AiReviewService> logger)
         {
@@ -34,6 +35,7 @@ namespace Services.AIReview
             _baseUrl = (config["Groq:BaseUrl"] ?? "https://api.groq.com/openai/v1").TrimEnd('/');
             _model = config["Groq:Model"] ?? "openai/gpt-oss-120b";
             _maxTokens = config.GetValue("Groq:MaxTokens", 3000);
+            _maxParallel = Math.Max(1, config.GetValue("Review:MaxParallelBatches", 2));
             _reasoningEffort = config["Groq:ReasoningEffort"];   // optional: "low" | "medium" | "high" (reasoning models only)
         }
 
@@ -47,27 +49,81 @@ namespace Services.AIReview
                 Batches = { new ReviewBatch { Diff = diff } }
             });
 
+        //public async Task<AiReviewResult> ReviewAsync(ReviewRequest request, CancellationToken ct = default)
+        //{
+        //    if (request.Batches.Count == 0)
+        //        throw new InvalidOperationException("Nothing to review (no batches).");
+
+        //    var partials = new List<(AiReviewResult Result, int Weight)>();
+        //    foreach (var batch in request.Batches)
+        //    {
+        //        var prompt = BuildPrompt(request, batch);
+        //        var result = await ReviewOneAsync(prompt, ct);
+        //        partials.Add((result, Math.Max(1, batch.DiffChars)));
+        //    }
+
+        //    var merged = Merge(partials);
+
+        //    merged.AiSummary = partials.Count == 1
+        //        ? partials[0].Result.AiSummary
+        //        : await SummariseAsync(request, partials.Select(p => p.Result.AiSummary).ToList(), ct);
+
+        //    if (!string.IsNullOrWhiteSpace(request.SummaryNote))
+        //        merged.AiSummary = $"{merged.AiSummary}\n\n{request.SummaryNote}".Trim();
+
+        //    return merged;
+        //}
+        private record BatchOutcome(ReviewBatch Batch, AiReviewResult? Result, Exception? Error);
+
         public async Task<AiReviewResult> ReviewAsync(ReviewRequest request, CancellationToken ct = default)
         {
             if (request.Batches.Count == 0)
                 throw new InvalidOperationException("Nothing to review (no batches).");
 
-            var partials = new List<(AiReviewResult Result, int Weight)>();
-            foreach (var batch in request.Batches)
+            // Batches run in parallel (limited, to respect provider rate limits). One failing batch must not
+            // throw away the other 20: it is reported in the summary instead.
+            using var gate = new SemaphoreSlim(_maxParallel);
+            var tasks = request.Batches.Select(async batch =>
             {
-                var prompt = BuildPrompt(request, batch);
-                var result = await ReviewOneAsync(prompt, ct);
-                partials.Add((result, Math.Max(1, batch.DiffChars)));
-            }
+                await gate.WaitAsync(ct);
+                try
+                {
+                    var result = await ReviewOneAsync(BuildPrompt(request, batch), ct);
+                    return new BatchOutcome(batch, result, null);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Batch failed ({Files} file(s))", batch.Files.Count);
+                    return new BatchOutcome(batch, null, ex);
+                }
+                finally { gate.Release(); }
+            }).ToList();
 
+            var outcomes = await Task.WhenAll(tasks);
+
+            var ok = outcomes.Where(o => o.Result != null).ToList();
+            var failed = outcomes.Where(o => o.Result == null).ToList();
+
+            if (ok.Count == 0)
+                throw new InvalidOperationException("Every review batch failed: " + failed[0].Error?.Message);
+
+            var partials = ok.Select(o => (o.Result!, Math.Max(1, o.Batch.DiffChars))).ToList();
             var merged = Merge(partials);
 
             merged.AiSummary = partials.Count == 1
-                ? partials[0].Result.AiSummary
-                : await SummariseAsync(request, partials.Select(p => p.Result.AiSummary).ToList(), ct);
+                ? partials[0].Item1.AiSummary
+                : await SummariseAsync(request, partials.Select(p => p.Item1.AiSummary).ToList(), ct);
 
-            if (!string.IsNullOrWhiteSpace(request.SummaryNote))
-                merged.AiSummary = $"{merged.AiSummary}\n\n{request.SummaryNote}".Trim();
+            var notes = new List<string>();
+            if (!string.IsNullOrWhiteSpace(request.SummaryNote)) notes.Add(request.SummaryNote!);
+            if (failed.Count > 0)
+            {
+                var files = failed.SelectMany(f => f.Batch.Files).Distinct().ToList();
+                notes.Add($"{failed.Count} part(s) of this PR could not be reviewed (AI provider error or rate limit): " +
+                          string.Join(", ", files.Take(8)) + (files.Count > 8 ? ", ..." : ".") + " Re-run the review to retry.");
+            }
+            if (notes.Count > 0) merged.AiSummary = $"{merged.AiSummary}\n\n{string.Join(" ", notes)}".Trim();
 
             return merged;
         }

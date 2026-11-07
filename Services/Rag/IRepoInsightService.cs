@@ -14,5 +14,6 @@ namespace Services.Rag
         Task StartIndexingAsync(int organizationId, int repositoryId, bool force);
         Task UpdateSettingsAsync(int organizationId, int repositoryId, ReviewSettingsRequest request);
         Task<AskResponse> AskAsync(int organizationId, int repositoryId, string question, CancellationToken ct);
+        Task<ReviewSettingsDto> GetSettingsAsync(int organizationId, int repositoryId);
     }
 }

@@ -35,6 +35,9 @@ namespace AICodeReviewer.Controllers
             await _insight.StartIndexingAsync(OrgId, id, force);
             return Accepted(ApiResponse.OkNoData("Indexing queue mein add ho gayi"));
         }
+        [HttpGet("{id:int}/review-settings")]
+        public async Task<IActionResult> GetReviewSettings(int id) =>
+          Ok(ApiResponse<ReviewSettingsDto>.Ok(await _insight.GetSettingsAsync(OrgId, id)));
 
         // PUT /api/repositories/{id}/review-settings
         [HttpPut("{id:int}/review-settings")]
