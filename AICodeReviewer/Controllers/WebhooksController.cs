@@ -33,6 +33,8 @@ namespace AICodeReviewer.Controllers
         public async Task<IActionResult> GitHubWebhook()
         {
             var a = _dbContext.Users.AsNoTracking().FirstOrDefault();
+            var b = _dbContext.Users.AsNoTracking().FirstOrDefault();
+
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
 
@@ -59,6 +61,7 @@ namespace AICodeReviewer.Controllers
             // a fresh DI scope per job and gives retries + a dashboard.
             switch (eventType)
             {
+                
                 case "pull_request":
                     BackgroundJob.Enqueue<IGitHubConnectService>(s => s.ProcessPrEventAsync(payload));
                     break;
