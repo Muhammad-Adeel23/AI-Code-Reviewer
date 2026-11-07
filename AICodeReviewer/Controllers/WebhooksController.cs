@@ -51,7 +51,6 @@ namespace AICodeReviewer.Controllers
                 _logger.LogWarning("Invalid webhook signature");
                 return Unauthorized(new { received = false });
             }
-            var s = "Data Source=db56455.public.databaseasp.net;Initial Catalog=db56455; User ID=YOUR-ID;Password=YOUR-PASSWORD;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False;";
             // v1 used `_ = Task.Run(...)`: that code ran on the request-scoped DbContext, which is DISPOSED as soon as we
             // return 200, so events were randomly lost (exceptions were swallowed inside the repository). Hangfire creates
             // a fresh DI scope per job and gives retries + a dashboard.
