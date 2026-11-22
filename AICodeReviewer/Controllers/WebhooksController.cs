@@ -32,7 +32,7 @@ namespace AICodeReviewer.Controllers
         // POST /api/webhooks/github   (no [Authorize]: GitHub calls it; the HMAC signature is the authentication)
         [HttpPost("github")]
         public async Task<IActionResult> GitHubWebhook()
-        {
+        { 
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
 
