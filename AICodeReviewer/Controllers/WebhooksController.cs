@@ -58,7 +58,7 @@ namespace AICodeReviewer.Controllers
             // return 200, so events were randomly lost (exceptions were swallowed inside the repository). Hangfire creates
             // a fresh DI scope per job and gives retries + a dashboard.
             switch (eventType)
-            {
+            { 
                 
                 case "pull_request":
                     BackgroundJob.Enqueue<IGitHubConnectService>(s => s.ProcessPrEventAsync(payload));
