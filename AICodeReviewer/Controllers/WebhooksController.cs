@@ -32,6 +32,7 @@ namespace AICodeReviewer.Controllers
         [HttpPost("github")]
         public async Task<IActionResult> GitHubWebhook()
         {
+            var test = _dbContext.Users.FindAsync();
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
 
