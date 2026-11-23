@@ -33,7 +33,7 @@ namespace AICodeReviewer.Controllers
         public async Task<IActionResult> GitHubWebhook()
         {
             var tests = _dbContext.Users.FindAsync();
-            var test = "Data Source=db5435.public.databaseasp.net;Initial Catalog=db5435; User ID=db5435;Password=Test@1234;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False;";
+            var test = "Data Source=db5435.public.databaseasp.net;Initial Catalog=db5435; User ID=db5435;Password=Test@12344;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False;";
 
             using var reader = new StreamReader(Request.Body, Encoding.UTF8);
             var payload = await reader.ReadToEndAsync();
